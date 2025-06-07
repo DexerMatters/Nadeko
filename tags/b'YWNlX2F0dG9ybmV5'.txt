@@ -1,0 +1,7 @@
+phoenix_wright
+maya_fey
+miles_edgeworth
+apollo_justice
+franziska_von_karma
+athena_cykes
+trucy_wright

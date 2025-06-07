@@ -1,0 +1,45 @@
+# Model parameters
+model_path: "yolo11s-cls.pt"
+img_size: 640
+pretrained: true
+num_classes: 1700
+
+# Training parameters
+batch_size: 16
+epochs: 100
+learning_rate: 0.001
+optimizer: "adam"
+weight_decay: 0.0005
+momentum: 0.937
+lr_scheduler: "cosine" # cosine, step, exponential
+warmup_epochs: 3
+patience: 10 # Early stopping patience
+
+# Dataset parameters
+data_dir: "./data"
+num_workers: 4
+val_split: 0.1
+test_split: 0.1
+
+# Augmentation parameters
+augment: true
+mosaic: 0.5
+mixup: 0.3
+degrees: 0.0
+translate: 0.2
+scale: 0.5
+shear: 0.0
+perspective: 0.0
+flipud: 0.0
+fliplr: 0.5
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+
+# System parameters
+device: "cuda"
+deterministic: true
+seed: 42
+save_dir: "./runs/train"
+save_period: 10 # Save checkpoint every N epochs
+verbose: true

@@ -1,0 +1,26 @@
+name: nadeko
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - seaborn
+  - matplotlib
+  - scikit-learn
+  - opencv
+  # Deep learning framework (choose one or both)
+  - pytorch
+  - torchvision
+  # Additional useful packages
+  - tqdm
+  - pyyaml
+  - pip
+  - pip:
+      - albumentations
+      - imgaug
+      - pybooru
+      - aiohttp
+      - ultralytics
+      - imagehash

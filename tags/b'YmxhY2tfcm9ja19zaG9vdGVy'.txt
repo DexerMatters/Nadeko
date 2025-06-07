@@ -1,0 +1,3 @@
+black_rock_shooter_(character)
+dead_master
+strength_(black_rock_shooter)
