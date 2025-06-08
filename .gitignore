@@ -2,3 +2,5 @@
 /data
 /data_plots
 /__pycache__
+*/**/__pycache__
+data.tar.gz
