@@ -45,20 +45,55 @@ def load_model(model_path, device="cpu"):
         ):
             print("Detected direct state dict, creating model...")
             try:
-                # If model path contains 'resnet', create a ResNet model
+                num_classes = len(get_training_tags())
+
+                # Check for different model architectures in the path
                 if "resnet" in model_path.lower():
                     from torchvision.models import resnet50
 
-                    num_classes = len(get_training_tags())
                     model = resnet50(pretrained=False)
                     # Modify the final layer to match our number of classes
                     model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
                     model.load_state_dict(checkpoint)
                     print(f"Created ResNet50 model with {num_classes} classes")
-                else:
-                    raise ValueError(
-                        "Could not determine model architecture from model path"
+                elif "densenet" in model_path.lower():
+                    from torchvision.models import densenet121
+
+                    model = densenet121(pretrained=False)
+                    # Modify the final layer to match our number of classes
+                    model.classifier = torch.nn.Linear(
+                        model.classifier.in_features, num_classes
                     )
+                    model.load_state_dict(checkpoint)
+                    print(f"Created DenseNet121 model with {num_classes} classes")
+                else:
+                    # Try to infer architecture from the keys in the state dict
+                    if any("layer1.0.conv1" in k for k in checkpoint.keys()):
+                        # Looks like a ResNet
+                        from torchvision.models import resnet50
+
+                        model = resnet50(pretrained=False)
+                        model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
+                        model.load_state_dict(checkpoint)
+                        print(
+                            f"Inferred ResNet model with {num_classes} classes from state dict"
+                        )
+                    elif any("denseblock1.denselayer1" in k for k in checkpoint.keys()):
+                        # Looks like a DenseNet
+                        from torchvision.models import densenet121
+
+                        model = densenet121(pretrained=False)
+                        model.classifier = torch.nn.Linear(
+                            model.classifier.in_features, num_classes
+                        )
+                        model.load_state_dict(checkpoint)
+                        print(
+                            f"Inferred DenseNet model with {num_classes} classes from state dict"
+                        )
+                    else:
+                        raise ValueError(
+                            "Could not determine model architecture from model path or state dict"
+                        )
             except Exception as e:
                 print(f"Error creating model: {e}")
                 raise
