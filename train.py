@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     try:
-        model, results, metrics_tracker = train("lenet")
+        model, results, metrics_tracker = train("resnet")
         logger.info(f"Training metrics saved to {metrics_tracker.csv_path}")
     except Exception as e:
         logger.exception(f"Training failed: {e}")
