@@ -50,11 +50,16 @@ def train(model: str):
     logger.info(
         f"Creating dataloaders with batch_size={batch_size}, img_size={img_size}"
     )
+
+    # Determine task type based on model
+    task = "classification" if model.lower() == "lenet" else "detection"
+
     train_loader, val_loader, test_loader = create_dataloaders(
         data_dir=data_dir,
         batch_size=batch_size,
         img_size=img_size,
         num_workers=num_workers,
+        task=task,
     )
 
     if not train_loader:

@@ -90,12 +90,13 @@ class CustomLeNet:
         # Import here to avoid circular imports
         from train.dataset import create_dataloaders
 
-        # Create dataloaders
+        # Create dataloaders for classification task
         train_loader, val_loader, _ = create_dataloaders(
             data_dir=data,
             batch_size=batch,
             img_size=imgsz,
             num_workers=kwargs.get("workers", 4),
+            task="classification",
         )
 
         if not train_loader:
@@ -139,15 +140,8 @@ class CustomLeNet:
             for batch_idx, batch_data in enumerate(
                 tqdm(train_loader, desc=f"Epoch {self.current_epoch}")
             ):
-                # Handle different dataloader return formats
-                if len(batch_data) == 2:
-                    images, targets = batch_data
-                elif len(batch_data) == 3:
-                    images, targets, _ = batch_data  # Ignore additional info
-                else:
-                    images = batch_data[0]
-                    targets = batch_data[1]
-
+                # For classification, we expect (images, targets, paths)
+                images, targets, _ = batch_data
                 images, targets = images.to(self.device), targets.to(self.device)
 
                 optim.zero_grad()
@@ -175,15 +169,7 @@ class CustomLeNet:
 
                 with torch.no_grad():
                     for batch_data in val_loader:
-                        # Handle different dataloader return formats
-                        if len(batch_data) == 2:
-                            images, targets = batch_data
-                        elif len(batch_data) == 3:
-                            images, targets, _ = batch_data  # Ignore additional info
-                        else:
-                            images = batch_data[0]
-                            targets = batch_data[1]
-
+                        images, targets, _ = batch_data
                         images, targets = images.to(self.device), targets.to(
                             self.device
                         )
@@ -238,6 +224,7 @@ class CustomLeNet:
             batch_size=kwargs.get("batch", 16),
             img_size=kwargs.get("imgsz", 224),
             num_workers=kwargs.get("workers", 4),
+            task="classification",
         )
 
         loader = test_loader if split == "test" else val_loader
@@ -252,15 +239,7 @@ class CustomLeNet:
 
         with torch.no_grad():
             for batch_data in loader:
-                # Handle different dataloader return formats
-                if len(batch_data) == 2:
-                    images, targets = batch_data
-                elif len(batch_data) == 3:
-                    images, targets, _ = batch_data  # Ignore additional info
-                else:
-                    images = batch_data[0]
-                    targets = batch_data[1]
-
+                images, targets, _ = batch_data
                 images, targets = images.to(self.device), targets.to(self.device)
                 outputs = self.model(images)
                 loss = criterion(outputs, targets)

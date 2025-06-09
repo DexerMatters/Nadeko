@@ -16,15 +16,23 @@ logging.basicConfig(
 
 
 class NadekoDataset(Dataset):
-    def __init__(self, data_dir="./data", img_size=640, transform=None, split="train"):
+    def __init__(
+        self,
+        data_dir="./data",
+        img_size=640,
+        transform=None,
+        split="train",
+        task="detection",
+    ):
         """
-        Custom dataset for YOLO models
+        Custom dataset for YOLO models and classification models
 
         Args:
             data_dir (str): Directory containing dataset
-            img_size (int): Input image size for YOLO
+            img_size (int): Input image size
             transform: Custom transformations
             split (str): 'train', 'val', or 'test'
+            task (str): 'detection' for YOLO, 'classification' for LeNet
         """
         self.data_dir = Path(data_dir)
         if not self.data_dir.exists():
@@ -32,6 +40,7 @@ class NadekoDataset(Dataset):
 
         self.img_size = img_size
         self.split = split
+        self.task = task  # 'detection' or 'classification'
         self.transform = transform
         self.class_names = self._get_class_names()
         self.num_classes = len(self.class_names)
@@ -49,14 +58,27 @@ class NadekoDataset(Dataset):
 
         # Default transforms if none provided
         if self.transform is None:
-            self.transform = A.Compose(
-                [
-                    A.Resize(height=img_size, width=img_size),
-                    A.Normalize(),
-                    ToTensorV2(),
-                ],
-                bbox_params=A.BboxParams(format="yolo", label_fields=["class_labels"]),
-            )
+            if self.task == "classification":
+                # Classification transforms (no bbox params)
+                self.transform = A.Compose(
+                    [
+                        A.Resize(height=img_size, width=img_size),
+                        A.Normalize(),
+                        ToTensorV2(),
+                    ]
+                )
+            else:
+                # Detection transforms (with bbox params)
+                self.transform = A.Compose(
+                    [
+                        A.Resize(height=img_size, width=img_size),
+                        A.Normalize(),
+                        ToTensorV2(),
+                    ],
+                    bbox_params=A.BboxParams(
+                        format="yolo", label_fields=["class_labels"]
+                    ),
+                )
 
     def _get_class_names(self):
         """Get class names from directories"""
@@ -153,59 +175,80 @@ class NadekoDataset(Dataset):
         else:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        # Load labels
-        boxes = []
-        class_labels = []
+        if self.task == "classification":
+            # For classification, we only need the class label
+            if label_path == "FOLDER_LABEL":
+                class_idx = self.class_indices[idx] if self.class_indices else 0
+            else:
+                # Try to get class from YOLO format file (use first class)
+                class_idx = 0
+                if os.path.exists(label_path):
+                    with open(label_path, "r") as f:
+                        first_line = f.readline().strip()
+                        if first_line:
+                            class_idx = int(first_line.split()[0])
 
-        if label_path == "FOLDER_LABEL":
-            # If using folder as label, create a full-image bounding box
-            # The class index comes from the folder name
-            class_idx = self.class_indices[idx] if self.class_indices else 0
+            # Apply transforms for classification
+            if self.transform:
+                transformed = self.transform(image=img)
+                img = transformed["image"]
 
-            # Create a box that covers the whole image (YOLO format is normalized)
-            boxes.append([0.5, 0.5, 1.0, 1.0])  # center_x, center_y, width, height
-            class_labels.append(class_idx)
-        elif os.path.exists(label_path):
-            # Process standard YOLO format label file
-            with open(label_path, "r") as f:
-                for line in f.readlines():
-                    data = line.strip().split()
-                    if len(data) >= 5:  # class, x, y, w, h
-                        class_idx = int(data[0])
-                        x_center, y_center, width, height = map(float, data[1:5])
+            return img, torch.tensor(class_idx, dtype=torch.long), img_path
 
-                        # YOLO format is already normalized
-                        boxes.append([x_center, y_center, width, height])
-                        class_labels.append(class_idx)
-
-        # Apply transformations
-        if self.transform and len(boxes) > 0:
-            transformed = self.transform(
-                image=img, bboxes=boxes, class_labels=class_labels
-            )
-            img = transformed["image"]
-            boxes = transformed["bboxes"]
-            class_labels = transformed["class_labels"]
-        elif self.transform:
-            transformed = self.transform(image=img)
-            img = transformed["image"]
-
-        # Convert to tensor format for YOLO
-        if len(boxes) > 0:
-            boxes = torch.tensor(boxes, dtype=torch.float32)
-            class_labels = torch.tensor(class_labels, dtype=torch.int64)
-            # Combine class and boxes for YOLO format
-            labels = torch.zeros((len(boxes), 5))
-            labels[:, 0] = class_labels
-            labels[:, 1:] = boxes
         else:
-            labels = torch.zeros((0, 5))
+            # Original detection logic
+            boxes = []
+            class_labels = []
 
-        return img, labels, img_path
+            if label_path == "FOLDER_LABEL":
+                # If using folder as label, create a full-image bounding box
+                class_idx = self.class_indices[idx] if self.class_indices else 0
+                # Create a box that covers the whole image (YOLO format is normalized)
+                boxes.append([0.5, 0.5, 1.0, 1.0])  # center_x, center_y, width, height
+                class_labels.append(class_idx)
+            elif os.path.exists(label_path):
+                # Process standard YOLO format label file
+                with open(label_path, "r") as f:
+                    for line in f.readlines():
+                        data = line.strip().split()
+                        if len(data) >= 5:  # class, x, y, w, h
+                            class_idx = int(data[0])
+                            x_center, y_center, width, height = map(float, data[1:5])
+
+                            # YOLO format is already normalized
+                            boxes.append([x_center, y_center, width, height])
+                            class_labels.append(class_idx)
+
+            # Apply transformations
+            if self.transform and len(boxes) > 0:
+                transformed = self.transform(
+                    image=img, bboxes=boxes, class_labels=class_labels
+                )
+                img = transformed["image"]
+                boxes = transformed["bboxes"]
+                class_labels = transformed["class_labels"]
+            elif self.transform:
+                transformed = self.transform(image=img)
+                img = transformed["image"]
+
+            # Convert to tensor format for YOLO
+            if len(boxes) > 0:
+                boxes = torch.tensor(boxes, dtype=torch.float32)
+                class_labels = torch.tensor(class_labels, dtype=torch.int64)
+                # Combine class and boxes for YOLO format
+                labels = torch.zeros((len(boxes), 5))
+                labels[:, 0] = class_labels
+                labels[:, 1:] = boxes
+            else:
+                labels = torch.zeros((0, 5))
+
+            return img, labels, img_path
 
 
 # Helper function to create data loaders
-def create_dataloaders(data_dir="./data", batch_size=16, img_size=640, num_workers=4):
+def create_dataloaders(
+    data_dir="./data", batch_size=16, img_size=640, num_workers=4, task="detection"
+):
     """Create DataLoaders for training, validation and testing"""
     # Verify data directory exists
     data_path = Path(data_dir)
@@ -215,9 +258,15 @@ def create_dataloaders(data_dir="./data", batch_size=16, img_size=640, num_worke
     logging.info(f"Creating dataloaders from {data_path}")
 
     # Create datasets
-    train_dataset = NadekoDataset(data_dir=data_dir, img_size=img_size, split="train")
-    val_dataset = NadekoDataset(data_dir=data_dir, img_size=img_size, split="val")
-    test_dataset = NadekoDataset(data_dir=data_dir, img_size=img_size, split="test")
+    train_dataset = NadekoDataset(
+        data_dir=data_dir, img_size=img_size, split="train", task=task
+    )
+    val_dataset = NadekoDataset(
+        data_dir=data_dir, img_size=img_size, split="val", task=task
+    )
+    test_dataset = NadekoDataset(
+        data_dir=data_dir, img_size=img_size, split="test", task=task
+    )
 
     # Check if datasets have samples
     if len(train_dataset) == 0:
@@ -225,7 +274,9 @@ def create_dataloaders(data_dir="./data", batch_size=16, img_size=640, num_worke
             "Training dataset is empty! Verify your data directory structure."
         )
         # Fallback to use all data for train if we can find any images
-        all_dataset = NadekoDataset(data_dir=data_dir, img_size=img_size, split="train")
+        all_dataset = NadekoDataset(
+            data_dir=data_dir, img_size=img_size, split="train", task=task
+        )
         all_dataset.split = "all"  # Set split to 'all' to try to find any images
         all_dataset.image_paths, all_dataset.label_paths = (
             all_dataset._get_all_image_and_label_paths()
@@ -234,6 +285,9 @@ def create_dataloaders(data_dir="./data", batch_size=16, img_size=640, num_worke
             logging.info(f"Using all {len(all_dataset)} images for training")
             train_dataset = all_dataset
 
+    # Choose collate function based on task
+    collate_func = collate_fn if task == "detection" else None
+
     # Create data loaders - use empty data loader if dataset is empty
     train_loader = (
         DataLoader(
@@ -241,7 +295,7 @@ def create_dataloaders(data_dir="./data", batch_size=16, img_size=640, num_worke
             batch_size=batch_size,
             shuffle=True,
             num_workers=num_workers,
-            collate_fn=collate_fn,
+            collate_fn=collate_func,
             pin_memory=True,
         )
         if len(train_dataset) > 0
@@ -254,7 +308,7 @@ def create_dataloaders(data_dir="./data", batch_size=16, img_size=640, num_worke
             batch_size=batch_size,
             shuffle=False,
             num_workers=num_workers,
-            collate_fn=collate_fn,
+            collate_fn=collate_func,
             pin_memory=True,
         )
         if len(val_dataset) > 0
@@ -267,7 +321,7 @@ def create_dataloaders(data_dir="./data", batch_size=16, img_size=640, num_worke
             batch_size=batch_size,
             shuffle=False,
             num_workers=num_workers,
-            collate_fn=collate_fn,
+            collate_fn=collate_func,
             pin_memory=True,
         )
         if len(test_dataset) > 0
