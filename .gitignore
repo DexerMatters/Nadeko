@@ -8,3 +8,4 @@ data.tar.gz
 /runs
 /.vscode
 /train_plot
+/data_test

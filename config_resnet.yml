@@ -1,12 +1,12 @@
 # Model parameters
-model_path: null # ResNet uses pretrained weights from torchvision
+model_path: null
 img_size: 224
 pretrained: true
 num_classes: 1700
 
 # Training parameters
 batch_size: 32
-epochs: 100
+epochs: 50
 learning_rate: 0.001
 optimizer: "adam"
 weight_decay: 0.0001
@@ -21,7 +21,7 @@ num_workers: 4
 val_split: 0.1
 test_split: 0.1
 
-# Augmentation parameters (simplified for ResNet)
+# Augmentation parameters
 augment: false
 
 # System parameters

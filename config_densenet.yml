@@ -1,7 +1,7 @@
 # Model parameters
-model_path: null
+model_path: null # DenseNet uses pretrained weights from torchvision
 img_size: 224
-pretrained: false
+pretrained: true
 num_classes: 1700
 
 # Training parameters
@@ -9,8 +9,8 @@ batch_size: 32
 epochs: 50
 learning_rate: 0.001
 optimizer: "adam"
-weight_decay: 0.0005
-momentum: 0.937
+weight_decay: 0.0001
+momentum: 0.9
 lr_scheduler: "cosine"
 warmup_epochs: 0
 patience: 10

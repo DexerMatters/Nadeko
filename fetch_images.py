@@ -98,8 +98,8 @@ if __name__ == "__main__":
             if tag:
                 tags.append(tag)
 
-    sample_count = 40
-    min_required = 30
+    sample_count = 5
+    min_required = 5
     for tag in tags:
         # if tag == "mihama_chiyo":
         #     start = True
@@ -154,7 +154,7 @@ if __name__ == "__main__":
             print(
                 f"!!!Warning: Only found {len(urls)} images for tag '{tag}' (minimum required: {min_required})"
             )
-        tag_dir = Path("data") / tag
+        tag_dir = Path("data_test") / tag
         tag_dir.mkdir(parents=True, exist_ok=True)
         print(f"Downloading {min(len(urls), sample_count)} images for tag '{tag}'...")
         if download_images(urls[:sample_count], output_dir=tag_dir) is None:

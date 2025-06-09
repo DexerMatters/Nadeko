@@ -52,7 +52,11 @@ def train(model: str):
     )
 
     # Determine task type based on model
-    task = "classification" if model.lower() in ["lenet", "resnet"] else "detection"
+    task = (
+        "classification"
+        if model.lower() in ["lenet", "resnet", "densenet"]
+        else "detection"
+    )
 
     train_loader, val_loader, test_loader = create_dataloaders(
         data_dir=data_dir,
@@ -94,8 +98,15 @@ def train(model: str):
 
         logger.info("Initializing ResNet model")
         model_instance = CustomResNet(model_path, metrics_tracker=metrics)
+    elif model.lower() == "densenet":
+        from baselines.densenet import CustomDenseNet
+
+        logger.info("Initializing DenseNet model")
+        model_instance = CustomDenseNet(model_path, metrics_tracker=metrics)
     else:
-        logger.error(f"Unknown model type: {model}")
+        logger.error(
+            f"Unknown model type: {model}. Supported models: yolo, lenet, resnet, densenet"
+        )
         return
 
     # Set up training parameters from config
