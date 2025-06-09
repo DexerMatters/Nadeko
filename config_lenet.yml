@@ -1,0 +1,34 @@
+# Model parameters
+model_path: null # LeNet doesn't use pretrained weights by default
+img_size: 224
+pretrained: false
+num_classes: 1700
+
+# Training parameters
+batch_size: 32
+epochs: 50
+learning_rate: 0.001
+optimizer: "adam"
+weight_decay: 0.0005
+momentum: 0.937
+lr_scheduler: "cosine"
+warmup_epochs: 0
+patience: 10
+
+# Dataset parameters
+data_dir: "./data"
+num_workers: 4
+val_split: 0.1
+test_split: 0.1
+
+# Augmentation parameters (simplified for LeNet)
+augment: false
+
+# System parameters
+device: "cuda"
+deterministic: true
+seed: 42
+save_dir: "./runs/train"
+plots_dir: "./train_plot"
+save_period: 10
+verbose: true

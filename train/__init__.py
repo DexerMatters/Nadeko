@@ -8,15 +8,18 @@ from train.config import ConfigLoader
 from train.dataset import create_dataloaders
 from train.utils import seed_everything
 from train.visualizers import MetricsTracker
-from train.model_wrappers import CustomYOLO
 
 logger = logging.getLogger(__name__)
 
 
-def train():
+def train(model: str):
     """Main training function"""
     # Load configuration
-    config = ConfigLoader("config_yolo.yml")
+    if not model:
+        logger.error("Model name must be provided.")
+        return
+
+    config = ConfigLoader(f"config_{model}.yml")
     logger.info(f"Loaded configuration: {config}")
 
     # Set seed for reproducibility
@@ -26,7 +29,7 @@ def train():
     save_dir = Path(config.get("save_dir", "./runs/train"))
     save_dir.mkdir(parents=True, exist_ok=True)
     time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"yolo_train_{time_stamp}"
+    run_name = f"{model}_train_{time_stamp}"
     save_dir = save_dir / run_name
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -65,12 +68,25 @@ def train():
     if val_loader:
         logger.info(f"Validation samples: {len(val_loader.dataset)}")
 
-    # Initialize the model with our custom YOLO class
-    model_path = config.get("model_path", "yolo11s-cls.pt")
+    # Initialize the model based on the model type
+    model_path = config.get("model_path")
     pretrained = config.get("pretrained", True)
 
-    logger.info(f"Initializing YOLO model from {model_path}")
-    model = CustomYOLO(model_path, metrics_tracker=metrics)
+    if model.lower() == "yolo":
+        from baselines.yolo import CustomYOLO
+
+        if not model_path:
+            model_path = "yolo11s-cls.pt"
+        logger.info(f"Initializing YOLO model from {model_path}")
+        model_instance = CustomYOLO(model_path, metrics_tracker=metrics)
+    elif model.lower() == "lenet":
+        from baselines.lenet import CustomLeNet
+
+        logger.info("Initializing LeNet model")
+        model_instance = CustomLeNet(model_path, metrics_tracker=metrics)
+    else:
+        logger.error(f"Unknown model type: {model}")
+        return
 
     # Set up training parameters from config
     train_args = {
@@ -90,29 +106,32 @@ def train():
         "weight_decay": config.get("weight_decay", 0.0005),
         "momentum": config.get("momentum", 0.937),
         "warmup_epochs": config.get("warmup_epochs", 3),
-        "close_mosaic": 10,
         "seed": config.get("seed", 42),
         "deterministic": config.get("deterministic", True),
     }
 
-    # Add augmentation parameters if enabled
-    if config.get("augment", True):
-        train_args.update(
-            {
-                "mosaic": config.get("mosaic", 0.5),
-                "mixup": config.get("mixup", 0.3),
-                "degrees": config.get("degrees", 0.0),
-                "translate": config.get("translate", 0.2),
-                "scale": config.get("scale", 0.5),
-                "shear": config.get("shear", 0.0),
-                "perspective": config.get("perspective", 0.0),
-                "flipud": config.get("flipud", 0.0),
-                "fliplr": config.get("fliplr", 0.5),
-                "hsv_h": config.get("hsv_h", 0.015),
-                "hsv_s": config.get("hsv_s", 0.7),
-                "hsv_v": config.get("hsv_v", 0.4),
-            }
-        )
+    # Add YOLO-specific parameters
+    if model.lower() == "yolo":
+        train_args["close_mosaic"] = 10
+
+        # Add augmentation parameters if enabled
+        if config.get("augment", True):
+            train_args.update(
+                {
+                    "mosaic": config.get("mosaic", 0.5),
+                    "mixup": config.get("mixup", 0.3),
+                    "degrees": config.get("degrees", 0.0),
+                    "translate": config.get("translate", 0.2),
+                    "scale": config.get("scale", 0.5),
+                    "shear": config.get("shear", 0.0),
+                    "perspective": config.get("perspective", 0.0),
+                    "flipud": config.get("flipud", 0.0),
+                    "fliplr": config.get("fliplr", 0.5),
+                    "hsv_h": config.get("hsv_h", 0.015),
+                    "hsv_s": config.get("hsv_s", 0.7),
+                    "hsv_v": config.get("hsv_v", 0.4),
+                }
+            )
 
     # Print training arguments
     logger.info("Training with the following parameters:")
@@ -121,7 +140,7 @@ def train():
 
     # Start training
     logger.info("Starting training...")
-    results = model.train(**train_args)
+    results = model_instance.train(**train_args)
 
     # Save final model
     final_model_path = save_dir / "best.pt"
@@ -130,7 +149,7 @@ def train():
     # Optionally run validation on test set
     if test_loader and config.get("run_test", True):
         logger.info("Running validation on test set...")
-        results = model.val(data=data_dir, split="test")
+        results = model_instance.val(data=data_dir, split="test")
         logger.info(f"Test results: {results}")
 
-    return model, results, metrics
+    return model_instance, results, metrics

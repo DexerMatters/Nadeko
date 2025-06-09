@@ -3,4 +3,8 @@
 /data_plots
 /__pycache__
 */**/__pycache__
+*/**/tests
 data.tar.gz
+/runs
+/.vscode
+/train_plot
