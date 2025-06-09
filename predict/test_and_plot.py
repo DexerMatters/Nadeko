@@ -79,6 +79,9 @@ def load_model(model_path, device="cpu"):
 
     model.eval()
     model = model.float()
+    # Explicitly move model to the specified device
+    model = model.to(device)
+    print(f"Model moved to device: {device}")
     return model, False  # Return model and flag indicating it's not a YOLO model
 
 
@@ -174,7 +177,9 @@ def predict_and_plot(model_path, device="cpu"):
         # Traditional PyTorch prediction approach
         with torch.no_grad():
             for img_tensor, true_tag, img_path in test_data:
-                img_batch = img_tensor.unsqueeze(0).to(device).float()
+                # First send tensor to device, then add batch dimension
+                img_tensor = img_tensor.to(device)
+                img_batch = img_tensor.unsqueeze(0)
 
                 # Get prediction
                 outputs = model(img_batch)

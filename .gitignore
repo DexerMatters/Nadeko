@@ -5,6 +5,7 @@
 */**/__pycache__
 */**/tests
 data.tar.gz
+data_test.tar.gz
 /runs
 /.vscode
 /train_plot
