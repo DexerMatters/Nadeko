@@ -1,0 +1,34 @@
+# ViT Configuration - Compatible with existing training pipeline
+
+# Model settings
+model_path: "vit_base_patch16_224" # timm model name
+pretrained: true
+
+# Data settings
+data_dir: "./data"
+img_size: 224 # ViT typically uses 224x224
+batch_size: 32
+num_workers: 4
+
+# Training settings
+epochs: 100
+patience: 15
+learning_rate: 0.001
+weight_decay: 0.0001
+optimizer: "adamw" # AdamW is preferred for transformers
+momentum: 0.9
+
+# System settings
+device: "cuda"
+seed: 42
+deterministic: true
+
+# Directories
+save_dir: "./runs/train"
+plots_dir: "./train_plot"
+
+# Validation settings
+run_test: true
+
+# Augmentation (minimal for ViT)
+augment: false
