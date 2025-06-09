@@ -1,10 +1,17 @@
+import matplotlib
+
+# Use Agg backend (non-GUI) to avoid display server issues
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image
 import os
-import matplotlib.pyplot as plt
 import numpy as np
+import sys
+from sklearn.metrics import f1_score, confusion_matrix
+from datetime import datetime
 
 # Turn off interactive plotting - only save figures
 plt.ioff()
@@ -31,7 +38,31 @@ def load_model(model_path, device="cpu"):
 
     # Handle model structure (dict with 'model' key)
     if isinstance(checkpoint, dict):
-        if "model" in checkpoint:
+        # Check if it's a direct state dict (containing weights and biases directly)
+        if any(
+            k.endswith((".weight", ".bias", ".running_mean", ".running_var"))
+            for k in checkpoint.keys()
+        ):
+            print("Detected direct state dict, creating model...")
+            try:
+                # If model path contains 'resnet', create a ResNet model
+                if "resnet" in model_path.lower():
+                    from torchvision.models import resnet50
+
+                    num_classes = len(get_training_tags())
+                    model = resnet50(pretrained=False)
+                    # Modify the final layer to match our number of classes
+                    model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
+                    model.load_state_dict(checkpoint)
+                    print(f"Created ResNet50 model with {num_classes} classes")
+                else:
+                    raise ValueError(
+                        "Could not determine model architecture from model path"
+                    )
+            except Exception as e:
+                print(f"Error creating model: {e}")
+                raise
+        elif "model" in checkpoint:
             model = checkpoint["model"]
         else:
             # Try to find the model in common keys
@@ -172,83 +203,190 @@ def predict_and_plot(model_path, device="cpu"):
     accuracy = correct / len(predictions) if predictions else 0
     print(f"Accuracy: {accuracy:.2%} ({correct}/{len(predictions)})")
 
+    # Calculate F1 score (macro average)
+    try:
+        f1 = f1_score(actual_labels, predictions, labels=training_tags, average="macro")
+        print(f"F1 Score (macro): {f1:.4f}")
+
+        # Calculate per-class F1 scores
+        f1_per_class = f1_score(
+            actual_labels, predictions, labels=training_tags, average=None
+        )
+        for i, tag in enumerate(training_tags):
+            print(f"F1 Score for {tag}: {f1_per_class[i]:.4f}")
+    except Exception as e:
+        print(f"Error calculating F1 score: {e}", file=sys.stderr)
+
     # Plot confusion matrix
     plot_confusion_matrix(actual_labels, predictions, training_tags)
 
-    # Plot sample predictions
-    plot_sample_predictions(image_paths[:12], actual_labels[:12], predictions[:12])
-
 
 def plot_confusion_matrix(actual, predicted, class_names):
-    """Plot confusion matrix"""
-    from sklearn.metrics import confusion_matrix
-    import seaborn as sns
+    """Plot confusion matrix alternatives for many classes"""
+    try:
+        import seaborn as sns
+        from sklearn.metrics import confusion_matrix, precision_score, recall_score
+        from collections import Counter
 
-    cm = confusion_matrix(actual, predicted, labels=class_names)
+        # Create timestamp-based directory to avoid overwriting
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_dir = os.path.join("predict", f"results_{timestamp}")
+        os.makedirs(save_dir, exist_ok=True)
 
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        xticklabels=class_names,
-        yticklabels=class_names,
-    )
-    plt.title("Confusion Matrix")
-    plt.ylabel("Actual")
-    plt.xlabel("Predicted")
-    plt.xticks(rotation=45)
-    plt.yticks(rotation=0)
-    plt.tight_layout()
+        # If we have too many classes (e.g., more than 50), use alternative visualizations
+        if len(class_names) > 50:
+            print(f"Using alternative visualizations for {len(class_names)} classes")
 
-    # Ensure directory exists
-    os.makedirs("predict", exist_ok=True)
-    plt.savefig("predict/confusion_matrix.png")
-    plt.close()  # Close the figure to free memory
-
-
-def plot_sample_predictions(image_paths, actual_labels, predictions):
-    """Plot sample predictions with images"""
-    n_samples = min(12, len(image_paths))
-    fig, axes = plt.subplots(3, 4, figsize=(16, 12))
-    axes = axes.flatten()
-
-    for i in range(n_samples):
-        try:
-            img = Image.open(image_paths[i])
-            axes[i].imshow(img)  # Add this line to show the image
-            axes[i].set_title(
-                f"Actual: {actual_labels[i]}\nPredicted: {predictions[i]}",
-                color="green" if actual_labels[i] == predictions[i] else "red",
+            # 1. Calculate per-class metrics
+            precisions = precision_score(
+                actual, predicted, labels=class_names, average=None, zero_division=0
             )
-            axes[i].axis("off")
-        except Exception as e:
-            axes[i].text(
-                0.5,
-                0.5,
-                f"Error loading image",
-                ha="center",
-                va="center",
-                transform=axes[i].transAxes,
+            recalls = recall_score(
+                actual, predicted, labels=class_names, average=None, zero_division=0
             )
-            axes[i].axis("off")
 
-    # Hide unused subplots
-    for i in range(n_samples, len(axes)):
-        axes[i].axis("off")
+            # Count actual instances per class
+            class_counts = Counter(actual)
+            counts = [class_counts.get(cls, 0) for cls in class_names]
 
-    plt.tight_layout()
+            # Create a DataFrame with metrics
+            import pandas as pd
 
-    # Ensure directory exists
-    os.makedirs("predict", exist_ok=True)
-    plt.savefig("predict/sample_predictions.png")
-    plt.close()  # Close the figure to free memory
+            metrics_df = pd.DataFrame(
+                {
+                    "Class": class_names,
+                    "Count": counts,
+                    "Precision": precisions,
+                    "Recall": recalls,
+                }
+            )
+
+            # Sort by count (descending)
+            metrics_df = metrics_df.sort_values("Count", ascending=False)
+
+            # 2. Plot top 30 classes by frequency
+            plt.figure(figsize=(12, 10))
+            top_classes = metrics_df.head(30)
+
+            # Reformat class names to include count
+            top_classes["ClassLabel"] = top_classes.apply(
+                lambda x: f"{x['Class']} ({x['Count']})", axis=1
+            )
+
+            # Plot precision and recall
+            x = np.arange(len(top_classes))
+            width = 0.35
+
+            fig, ax = plt.subplots(figsize=(15, 8))
+            ax.bar(x - width / 2, top_classes["Precision"], width, label="Precision")
+            ax.bar(x + width / 2, top_classes["Recall"], width, label="Recall")
+
+            ax.set_xticks(x)
+            ax.set_xticklabels(top_classes["ClassLabel"], rotation=45, ha="right")
+            ax.legend()
+            ax.set_ylim(0, 1.0)
+            ax.set_title("Precision and Recall for Top 30 Classes")
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, "top_classes_metrics.png"))
+            plt.close()
+
+            # 3. Plot accuracy distribution
+            # Calculate accuracy per class (when class appears in actual)
+            class_correct = {}
+            for cls in class_names:
+                cls_indices = [i for i, label in enumerate(actual) if label == cls]
+                if cls_indices:
+                    correct = sum(1 for i in cls_indices if predicted[i] == actual[i])
+                    class_correct[cls] = correct / len(cls_indices)
+                else:
+                    class_correct[cls] = 0
+
+            # Plot histogram of class accuracies
+            plt.figure(figsize=(10, 6))
+            accuracies = list(class_correct.values())
+            plt.hist(accuracies, bins=20, alpha=0.7)
+            plt.axvline(
+                x=np.mean(accuracies),
+                color="red",
+                linestyle="--",
+                label=f"Mean Accuracy: {np.mean(accuracies):.3f}",
+            )
+            plt.xlabel("Accuracy")
+            plt.ylabel("Number of Classes")
+            plt.title("Distribution of Per-Class Accuracy")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, "accuracy_distribution.png"))
+            plt.close()
+
+            # 4. Plot most confused pairs
+            # Create a simplified confusion matrix focusing on misclassifications
+            cm = confusion_matrix(actual, predicted, labels=class_names)
+            np.fill_diagonal(cm, 0)  # Remove diagonal (correct predictions)
+
+            # Get the top confused pairs
+            confused_pairs = []
+            for i in range(len(class_names)):
+                for j in range(len(class_names)):
+                    if cm[i, j] > 0:
+                        confused_pairs.append(
+                            (class_names[i], class_names[j], cm[i, j])
+                        )
+
+            # Sort by confusion count (descending)
+            confused_pairs.sort(key=lambda x: x[2], reverse=True)
+
+            # Plot top confused pairs
+            if confused_pairs:
+                top_pairs = confused_pairs[:20]  # Get top 20 confused pairs
+                plt.figure(figsize=(12, 8))
+                pair_labels = [f"{actual} → {pred}" for actual, pred, _ in top_pairs]
+                counts = [count for _, _, count in top_pairs]
+
+                plt.barh(range(len(top_pairs)), counts, align="center")
+                plt.yticks(range(len(top_pairs)), pair_labels)
+                plt.xlabel("Count")
+                plt.title("Top 20 Confused Class Pairs (Actual → Predicted)")
+                plt.tight_layout()
+                plt.savefig(os.path.join(save_dir, "top_confused_pairs.png"))
+                plt.close()
+
+            print(f"Created alternative visualizations in {save_dir}")
+
+        else:
+            # For fewer classes, plot the standard confusion matrix
+            cm = confusion_matrix(actual, predicted, labels=class_names)
+            plt.figure(figsize=(10, 8))
+            sns.heatmap(
+                cm,
+                annot=True,
+                fmt="d",
+                cmap="Blues",
+                xticklabels=class_names,
+                yticklabels=class_names,
+            )
+            plt.title("Confusion Matrix")
+            plt.ylabel("Actual")
+            plt.xlabel("Predicted")
+            plt.xticks(rotation=45)
+            plt.yticks(rotation=0)
+            plt.tight_layout()
+
+            save_path = os.path.join(save_dir, "confusion_matrix.png")
+            plt.savefig(save_path)
+            plt.close()
+            print(f"Saved confusion matrix to {save_path}")
+
+    except Exception as e:
+        print(f"Error creating visualizations: {e}", file=sys.stderr)
+        import traceback
+
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
     # Usage example
-    model_path = "/home/dexer/Repos/Python/Nadeko/runs/train/yolo_train_20250608_200028/weights/best.pt"
+    model_path = "/home/dexer/Repos/Python/Nadeko/runs/train/resnet_train_20250609_200651/best.pt"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
