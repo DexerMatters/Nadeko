@@ -136,9 +136,18 @@ class CustomLeNet:
             train_correct = 0
             train_total = 0
 
-            for batch_idx, (images, targets) in enumerate(
+            for batch_idx, batch_data in enumerate(
                 tqdm(train_loader, desc=f"Epoch {self.current_epoch}")
             ):
+                # Handle different dataloader return formats
+                if len(batch_data) == 2:
+                    images, targets = batch_data
+                elif len(batch_data) == 3:
+                    images, targets, _ = batch_data  # Ignore additional info
+                else:
+                    images = batch_data[0]
+                    targets = batch_data[1]
+
                 images, targets = images.to(self.device), targets.to(self.device)
 
                 optim.zero_grad()
@@ -165,7 +174,16 @@ class CustomLeNet:
                 val_total = 0
 
                 with torch.no_grad():
-                    for images, targets in val_loader:
+                    for batch_data in val_loader:
+                        # Handle different dataloader return formats
+                        if len(batch_data) == 2:
+                            images, targets = batch_data
+                        elif len(batch_data) == 3:
+                            images, targets, _ = batch_data  # Ignore additional info
+                        else:
+                            images = batch_data[0]
+                            targets = batch_data[1]
+
                         images, targets = images.to(self.device), targets.to(
                             self.device
                         )
@@ -233,7 +251,16 @@ class CustomLeNet:
         criterion = nn.CrossEntropyLoss()
 
         with torch.no_grad():
-            for images, targets in loader:
+            for batch_data in loader:
+                # Handle different dataloader return formats
+                if len(batch_data) == 2:
+                    images, targets = batch_data
+                elif len(batch_data) == 3:
+                    images, targets, _ = batch_data  # Ignore additional info
+                else:
+                    images = batch_data[0]
+                    targets = batch_data[1]
+
                 images, targets = images.to(self.device), targets.to(self.device)
                 outputs = self.model(images)
                 loss = criterion(outputs, targets)

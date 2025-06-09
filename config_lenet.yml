@@ -6,7 +6,7 @@ num_classes: 1700
 
 # Training parameters
 batch_size: 32
-epochs: 50
+epochs: 100
 learning_rate: 0.001
 optimizer: "adam"
 weight_decay: 0.0005
