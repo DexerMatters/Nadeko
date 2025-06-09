@@ -18,6 +18,7 @@ class LossVisualizer:
         self.train_losses = []
         self.val_losses = []
         self.accuracies = []
+        self.val_accuracies = []
         self.epochs = []
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -30,7 +31,9 @@ class LossVisualizer:
         if not self.csv_path.exists():
             with open(self.csv_path, "w", newline="") as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow(["epoch", "train_loss", "val_loss", "accuracy"])
+                writer.writerow(
+                    ["epoch", "train_loss", "val_loss", "accuracy", "val_accuracy"]
+                )
             logger.info(f"Created metrics CSV file at {self.csv_path}")
 
         # Set plot appearance
@@ -41,7 +44,9 @@ class LossVisualizer:
 
         logger.info(f"Loss plots will be saved to {self.save_dir.absolute()}")
 
-    def update(self, epoch, train_loss, val_loss=None, accuracy=None):
+    def update(
+        self, epoch, train_loss, val_loss=None, accuracy=None, val_accuracy=None
+    ):
         """Update the plot with new loss values and save to CSV"""
         self.epochs.append(epoch)
         self.train_losses.append(train_loss)
@@ -57,17 +62,22 @@ class LossVisualizer:
         else:
             accuracy = float("nan")
 
+        if val_accuracy is not None:
+            self.val_accuracies.append(val_accuracy)
+        else:
+            val_accuracy = float("nan")
+
         # Save to CSV
-        self._save_to_csv(epoch, train_loss, val_loss, accuracy)
+        self._save_to_csv(epoch, train_loss, val_loss, accuracy, val_accuracy)
 
         # Update the plot
         self._redraw()
 
-    def _save_to_csv(self, epoch, train_loss, val_loss, accuracy):
+    def _save_to_csv(self, epoch, train_loss, val_loss, accuracy, val_accuracy):
         """Save metrics to CSV file"""
         with open(self.csv_path, "a", newline="") as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow([epoch, train_loss, val_loss, accuracy])
+            writer.writerow([epoch, train_loss, val_loss, accuracy, val_accuracy])
         logger.debug(f"Saved metrics for epoch {epoch} to CSV")
 
     def _redraw(self):
@@ -132,6 +142,7 @@ class MetricsTracker:
         self.train_losses = []
         self.val_losses = []
         self.accuracies = []
+        self.val_accuracies = []
         self.epochs = []
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -143,12 +154,16 @@ class MetricsTracker:
         if not self.csv_path.exists():
             with open(self.csv_path, "w", newline="") as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow(["epoch", "train_loss", "val_loss", "accuracy"])
+                writer.writerow(
+                    ["epoch", "train_loss", "val_loss", "accuracy", "val_accuracy"]
+                )
             logger.info(f"Created metrics CSV file at {self.csv_path}")
 
         logger.info(f"Training metrics will be saved to {self.csv_path}")
 
-    def update(self, epoch, train_loss, val_loss=None, accuracy=None):
+    def update(
+        self, epoch, train_loss, val_loss=None, accuracy=None, val_accuracy=None
+    ):
         """Update metrics and save to CSV"""
         self.epochs.append(epoch)
         self.train_losses.append(train_loss)
@@ -164,12 +179,17 @@ class MetricsTracker:
         else:
             accuracy = float("nan")
 
-        # Save to CSV
-        self._save_to_csv(epoch, train_loss, val_loss, accuracy)
+        if val_accuracy is not None:
+            self.val_accuracies.append(val_accuracy)
+        else:
+            val_accuracy = float("nan")
 
-    def _save_to_csv(self, epoch, train_loss, val_loss, accuracy):
+        # Save to CSV
+        self._save_to_csv(epoch, train_loss, val_loss, accuracy, val_accuracy)
+
+    def _save_to_csv(self, epoch, train_loss, val_loss, accuracy, val_accuracy):
         """Save metrics to CSV file"""
         with open(self.csv_path, "a", newline="") as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow([epoch, train_loss, val_loss, accuracy])
+            writer.writerow([epoch, train_loss, val_loss, accuracy, val_accuracy])
         logger.debug(f"Saved metrics for epoch {epoch} to CSV")

@@ -1,5 +1,5 @@
 # Model parameters
-model_path: null
+model_path: null # DenseNet uses pretrained weights from torchvision
 img_size: 224
 pretrained: true
 num_classes: 1700

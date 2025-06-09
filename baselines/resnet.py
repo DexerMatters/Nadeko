@@ -156,7 +156,7 @@ class CustomResNet:
             # Update metrics
             if self.metrics_tracker:
                 self.metrics_tracker.update(
-                    self.current_epoch, train_loss, val_loss, train_acc
+                    self.current_epoch, train_loss, val_loss, train_acc, val_acc
                 )
 
             # Logging
