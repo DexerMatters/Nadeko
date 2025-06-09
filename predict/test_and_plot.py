@@ -130,7 +130,7 @@ def load_test_data(test_dir="./data_test"):
 
 
 def predict_and_plot(model_path, device="cpu"):
-    """Run predictions and plot results"""
+    """Run predictions and save metrics to CSV"""
     # Load model and data
     model, is_yolo = load_model(model_path, device)
     test_data = load_test_data()
@@ -217,20 +217,25 @@ def predict_and_plot(model_path, device="cpu"):
         f1_per_class = f1_score(
             actual_labels, predictions, labels=training_tags, average=None
         )
-        for i, tag in enumerate(training_tags):
-            print(f"F1 Score for {tag}: {f1_per_class[i]:.4f}")
     except Exception as e:
         print(f"Error calculating F1 score: {e}", file=sys.stderr)
+        f1 = 0
+        f1_per_class = [0] * len(training_tags)
 
-    # Plot confusion matrix
-    plot_confusion_matrix(actual_labels, predictions, training_tags)
+    # Save metrics to CSV instead of plotting
+    save_metrics_to_csv(actual_labels, predictions, training_tags, accuracy, f1)
 
 
-def plot_confusion_matrix(actual, predicted, class_names):
-    """Plot confusion matrix alternatives for many classes"""
+def save_metrics_to_csv(actual, predicted, class_names, overall_accuracy, overall_f1):
+    """Save metrics to CSV file"""
     try:
-        import seaborn as sns
-        from sklearn.metrics import confusion_matrix, precision_score, recall_score
+        import pandas as pd
+        from sklearn.metrics import (
+            precision_score,
+            recall_score,
+            f1_score,
+            accuracy_score,
+        )
         from collections import Counter
 
         # Create timestamp-based directory to avoid overwriting
@@ -238,152 +243,69 @@ def plot_confusion_matrix(actual, predicted, class_names):
         save_dir = os.path.join("predict", f"results_{timestamp}")
         os.makedirs(save_dir, exist_ok=True)
 
-        # If we have too many classes (e.g., more than 50), use alternative visualizations
-        if len(class_names) > 50:
-            print(f"Using alternative visualizations for {len(class_names)} classes")
+        # Calculate per-class metrics
+        precisions = precision_score(
+            actual, predicted, labels=class_names, average=None, zero_division=0
+        )
+        recalls = recall_score(
+            actual, predicted, labels=class_names, average=None, zero_division=0
+        )
+        f1_scores = f1_score(
+            actual, predicted, labels=class_names, average=None, zero_division=0
+        )
 
-            # 1. Calculate per-class metrics
-            precisions = precision_score(
-                actual, predicted, labels=class_names, average=None, zero_division=0
-            )
-            recalls = recall_score(
-                actual, predicted, labels=class_names, average=None, zero_division=0
-            )
+        # Count actual instances per class
+        class_counts = Counter(actual)
+        counts = [class_counts.get(cls, 0) for cls in class_names]
 
-            # Count actual instances per class
-            class_counts = Counter(actual)
-            counts = [class_counts.get(cls, 0) for cls in class_names]
+        # Calculate per-class accuracy
+        class_correct = {}
+        for cls in class_names:
+            cls_indices = [i for i, label in enumerate(actual) if label == cls]
+            if cls_indices:
+                correct = sum(1 for i in cls_indices if predicted[i] == actual[i])
+                class_correct[cls] = correct / len(cls_indices)
+            else:
+                class_correct[cls] = 0
 
-            # Create a DataFrame with metrics
-            import pandas as pd
+        accuracies = [class_correct.get(cls, 0) for cls in class_names]
 
-            metrics_df = pd.DataFrame(
-                {
-                    "Class": class_names,
-                    "Count": counts,
-                    "Precision": precisions,
-                    "Recall": recalls,
-                }
-            )
+        # Create DataFrame for per-class metrics
+        metrics_df = pd.DataFrame(
+            {
+                "Class": class_names,
+                "Count": counts,
+                "Accuracy": accuracies,
+                "Precision": precisions,
+                "Recall": recalls,
+                "F1_Score": f1_scores,
+            }
+        )
 
-            # Sort by count (descending)
-            metrics_df = metrics_df.sort_values("Count", ascending=False)
+        # Sort by count (descending)
+        metrics_df = metrics_df.sort_values("Count", ascending=False)
 
-            # 2. Plot top 30 classes by frequency
-            plt.figure(figsize=(12, 10))
-            top_classes = metrics_df.head(30)
+        # Save per-class metrics to CSV
+        csv_path = os.path.join(save_dir, "class_metrics.csv")
+        metrics_df.to_csv(csv_path, index=False)
 
-            # Reformat class names to include count
-            top_classes["ClassLabel"] = top_classes.apply(
-                lambda x: f"{x['Class']} ({x['Count']})", axis=1
-            )
+        # Save overall metrics to a separate CSV
+        overall_df = pd.DataFrame(
+            {
+                "Metric": ["Accuracy", "F1_Score_Macro"],
+                "Value": [overall_accuracy, overall_f1],
+            }
+        )
 
-            # Plot precision and recall
-            x = np.arange(len(top_classes))
-            width = 0.35
+        overall_csv_path = os.path.join(save_dir, "overall_metrics.csv")
+        overall_df.to_csv(overall_csv_path, index=False)
 
-            fig, ax = plt.subplots(figsize=(15, 8))
-            ax.bar(x - width / 2, top_classes["Precision"], width, label="Precision")
-            ax.bar(x + width / 2, top_classes["Recall"], width, label="Recall")
-
-            ax.set_xticks(x)
-            ax.set_xticklabels(top_classes["ClassLabel"], rotation=45, ha="right")
-            ax.legend()
-            ax.set_ylim(0, 1.0)
-            ax.set_title("Precision and Recall for Top 30 Classes")
-            plt.tight_layout()
-            plt.savefig(os.path.join(save_dir, "top_classes_metrics.png"))
-            plt.close()
-
-            # 3. Plot accuracy distribution
-            # Calculate accuracy per class (when class appears in actual)
-            class_correct = {}
-            for cls in class_names:
-                cls_indices = [i for i, label in enumerate(actual) if label == cls]
-                if cls_indices:
-                    correct = sum(1 for i in cls_indices if predicted[i] == actual[i])
-                    class_correct[cls] = correct / len(cls_indices)
-                else:
-                    class_correct[cls] = 0
-
-            # Plot histogram of class accuracies
-            plt.figure(figsize=(10, 6))
-            accuracies = list(class_correct.values())
-            plt.hist(accuracies, bins=20, alpha=0.7)
-            plt.axvline(
-                x=np.mean(accuracies),
-                color="red",
-                linestyle="--",
-                label=f"Mean Accuracy: {np.mean(accuracies):.3f}",
-            )
-            plt.xlabel("Accuracy")
-            plt.ylabel("Number of Classes")
-            plt.title("Distribution of Per-Class Accuracy")
-            plt.legend()
-            plt.tight_layout()
-            plt.savefig(os.path.join(save_dir, "accuracy_distribution.png"))
-            plt.close()
-
-            # 4. Plot most confused pairs
-            # Create a simplified confusion matrix focusing on misclassifications
-            cm = confusion_matrix(actual, predicted, labels=class_names)
-            np.fill_diagonal(cm, 0)  # Remove diagonal (correct predictions)
-
-            # Get the top confused pairs
-            confused_pairs = []
-            for i in range(len(class_names)):
-                for j in range(len(class_names)):
-                    if cm[i, j] > 0:
-                        confused_pairs.append(
-                            (class_names[i], class_names[j], cm[i, j])
-                        )
-
-            # Sort by confusion count (descending)
-            confused_pairs.sort(key=lambda x: x[2], reverse=True)
-
-            # Plot top confused pairs
-            if confused_pairs:
-                top_pairs = confused_pairs[:20]  # Get top 20 confused pairs
-                plt.figure(figsize=(12, 8))
-                pair_labels = [f"{actual} → {pred}" for actual, pred, _ in top_pairs]
-                counts = [count for _, _, count in top_pairs]
-
-                plt.barh(range(len(top_pairs)), counts, align="center")
-                plt.yticks(range(len(top_pairs)), pair_labels)
-                plt.xlabel("Count")
-                plt.title("Top 20 Confused Class Pairs (Actual → Predicted)")
-                plt.tight_layout()
-                plt.savefig(os.path.join(save_dir, "top_confused_pairs.png"))
-                plt.close()
-
-            print(f"Created alternative visualizations in {save_dir}")
-
-        else:
-            # For fewer classes, plot the standard confusion matrix
-            cm = confusion_matrix(actual, predicted, labels=class_names)
-            plt.figure(figsize=(10, 8))
-            sns.heatmap(
-                cm,
-                annot=True,
-                fmt="d",
-                cmap="Blues",
-                xticklabels=class_names,
-                yticklabels=class_names,
-            )
-            plt.title("Confusion Matrix")
-            plt.ylabel("Actual")
-            plt.xlabel("Predicted")
-            plt.xticks(rotation=45)
-            plt.yticks(rotation=0)
-            plt.tight_layout()
-
-            save_path = os.path.join(save_dir, "confusion_matrix.png")
-            plt.savefig(save_path)
-            plt.close()
-            print(f"Saved confusion matrix to {save_path}")
+        print(f"Saved metrics to {save_dir}")
+        print(f"Overall accuracy: {overall_accuracy:.4f}")
+        print(f"Overall F1 score (macro): {overall_f1:.4f}")
 
     except Exception as e:
-        print(f"Error creating visualizations: {e}", file=sys.stderr)
+        print(f"Error saving metrics to CSV: {e}", file=sys.stderr)
         import traceback
 
         traceback.print_exc()
