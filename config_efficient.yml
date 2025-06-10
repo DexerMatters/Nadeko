@@ -1,0 +1,32 @@
+# EfficientNet Configuration - Lightweight and compatible with YOLO pipeline
+
+# Model settings
+model_path: "efficientnet_b3" # Options: efficientnet_b0 through efficientnet_b7
+pretrained: true
+
+# Data settings
+data_dir: "./data"
+img_size: 224 # EfficientNet input size
+batch_size: 32
+num_workers: 4
+
+# Training settings
+epochs: 100
+patience: 15
+learning_rate: 0.001
+optimizer: "adam" # adam, adamw, sgd
+weight_decay: 0.0001
+momentum: 0.9 # For SGD optimizer
+
+# System settings
+device: "cuda"
+seed: 42
+deterministic: true
+save_dir: "./runs/train"
+plots_dir: "./train_plot"
+
+# Validation settings
+run_test: true
+
+# No augmentation parameters needed as they're handled by dataset.py
+augment: false

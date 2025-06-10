@@ -54,7 +54,7 @@ def train(model: str):
     # Determine task type based on model
     task = (
         "classification"
-        if model.lower() in ["lenet", "resnet", "densenet", "vit"]
+        if model.lower() in ["lenet", "resnet", "densenet", "vit", "efficient"]
         else "detection"
     )
 
@@ -108,9 +108,14 @@ def train(model: str):
 
         logger.info("Initializing ViT model")
         model_instance = CustomViT(model_path, metrics_tracker=metrics)
+    elif model.lower() == "efficient":
+        from baselines.efficient import CustomEfficientNet
+
+        logger.info("Initializing EfficientNet model")
+        model_instance = CustomEfficientNet(model_path, metrics_tracker=metrics)
     else:
         logger.error(
-            f"Unknown model type: {model}. Supported models: yolo, lenet, resnet, densenet, vit"
+            f"Unknown model type: {model}. Supported models: yolo, lenet, resnet, densenet, vit, efficient"
         )
         return
 
@@ -136,7 +141,7 @@ def train(model: str):
         "deterministic": config.get("deterministic", True),
     }
 
-    # Add YOLO-specific parameters
+    # Model-specific parameters
     if model.lower() == "yolo":
         train_args["close_mosaic"] = 10
 
@@ -158,16 +163,17 @@ def train(model: str):
                     "hsv_v": config.get("hsv_v", 0.4),
                 }
             )
-    # Add ViT-specific parameters
-    if model.lower() == "vit":
+    # Handle ViT and EfficientNet specific parameters
+    elif model.lower() in ["vit", "efficient"]:
+        # Update with model-specific parameters
         train_args.update(
             {
-                "optimizer": config.get("optimizer", "adamw"),
+                "optimizer": config.get("optimizer", "adam"),
                 "weight_decay": config.get("weight_decay", 0.0001),
             }
         )
-        # Remove YOLO-specific parameters that don't apply to ViT
-        vit_args = {
+        # Remove YOLO-specific parameters that don't apply
+        clean_args = {
             k: v
             for k, v in train_args.items()
             if k
@@ -187,28 +193,7 @@ def train(model: str):
                 "hsv_v",
             ]
         }
-        train_args = vit_args
-    elif model.lower() == "yolo":
-        train_args["close_mosaic"] = 10
-
-        # Add augmentation parameters if enabled
-        if config.get("augment", True):
-            train_args.update(
-                {
-                    "mosaic": config.get("mosaic", 0.5),
-                    "mixup": config.get("mixup", 0.3),
-                    "degrees": config.get("degrees", 0.0),
-                    "translate": config.get("translate", 0.2),
-                    "scale": config.get("scale", 0.5),
-                    "shear": config.get("shear", 0.0),
-                    "perspective": config.get("perspective", 0.0),
-                    "flipud": config.get("flipud", 0.0),
-                    "fliplr": config.get("fliplr", 0.5),
-                    "hsv_h": config.get("hsv_h", 0.015),
-                    "hsv_s": config.get("hsv_s", 0.7),
-                    "hsv_v": config.get("hsv_v", 0.4),
-                }
-            )
+        train_args = clean_args
 
     # Print training arguments
     logger.info("Training with the following parameters:")
