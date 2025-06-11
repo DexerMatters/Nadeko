@@ -50,7 +50,13 @@ def read_test_results(folder_name):
 def clean_model_name(folder_name):
     """Extract a clean model name from the folder name"""
     name = folder_name.replace("_test_result", "").replace("results_", "")
-    return name.capitalize()
+    # Improve model name formatting for better display
+    name = name.replace("densenet", "DenseNet")
+    name = name.replace("efficientnet", "EfficientNet")
+    # Capitalize first letter if not already done
+    if not name[0].isupper():
+        name = name.capitalize()
+    return name
 
 
 def plot_overall_metrics(results_dict):
@@ -109,7 +115,11 @@ def plot_overall_metrics(results_dict):
 
     # Create radar chart if more than one model
     if len(models) > 1:
-        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+        # Adjust figure size based on number of models
+        fig_size = 8 + (len(models) * 0.5)
+        fig, ax = plt.subplots(
+            figsize=(fig_size, fig_size), subplot_kw=dict(polar=True)
+        )
 
         # Number of metrics (2 in this case: accuracy and F1)
         num_metrics = 2
@@ -130,11 +140,37 @@ def plot_overall_metrics(results_dict):
 
         ax.set_ylim(0, 1)
         ax.set_title("Model Performance Metrics", size=15)
-        ax.legend(loc="upper right", bbox_to_anchor=(0.1, 0.1))
+
+        # Adjust legend position based on number of models
+        if len(models) > 2:
+            ax.legend(loc="lower right", bbox_to_anchor=(0.1, 0.1))
+        else:
+            ax.legend(loc="upper right", bbox_to_anchor=(0.1, 0.1))
 
         plt.tight_layout()
         plt.savefig(os.path.join(PLOTS_DIR, "radar_chart_comparison.png"), dpi=300)
         plt.close()
+
+        # Add heatmap comparison if more than one model
+        if len(models) > 1:
+            # Create a heatmap to compare models
+            metrics_data = {
+                "Model": models,
+                "Accuracy": accuracy_values,
+                "F1 Score": f1_values,
+            }
+            metrics_df = pd.DataFrame(metrics_data).set_index("Model")
+
+            plt.figure(figsize=(10, 6))
+            sns.heatmap(
+                metrics_df, annot=True, cmap="YlGnBu", vmin=0, vmax=1, fmt=".3f"
+            )
+            plt.title("Model Performance Heatmap")
+            plt.tight_layout()
+            plt.savefig(
+                os.path.join(PLOTS_DIR, "model_heatmap_comparison.png"), dpi=300
+            )
+            plt.close()
 
 
 def plot_class_metrics_distribution(results_dict):
@@ -326,6 +362,74 @@ def plot_metric_comparison(results_dict):
             os.path.join(PLOTS_DIR, f"comparison_{metric.lower()}.png"), dpi=300
         )
         plt.close()
+
+        # If we have more than 2 models, create additional comparison plots
+        if len(class_dfs) > 2:
+            # Create pairwise comparisons for all model combinations
+            model_pairs = [
+                (i, j)
+                for i in range(len(model_names))
+                for j in range(i + 1, len(model_names))
+            ]
+
+            for idx1, idx2 in model_pairs:
+                # Skip the first pair as it's already plotted above
+                if idx1 == 0 and idx2 == 1:
+                    continue
+
+                df1 = filtered_dfs[idx1]
+                df2 = filtered_dfs[idx2]
+
+                # Sort by class name for consistent comparison
+                df1 = df1.sort_values("Class")
+                df2 = df2.sort_values("Class")
+
+                # Create scatter plot
+                fig, ax = plt.subplots(figsize=(10, 10))
+                plt.scatter(df1[metric], df2[metric], alpha=0.7)
+
+                # Add diagonal line (y=x) for reference
+                min_val = min(df1[metric].min(), df2[metric].min())
+                max_val = max(df1[metric].max(), df2[metric].max())
+                plt.plot([min_val, max_val], [min_val, max_val], "r--")
+
+                # Add labels
+                plt.xlabel(f"{model_names[idx1]} {metric}")
+                plt.ylabel(f"{model_names[idx2]} {metric}")
+                plt.title(
+                    f"Comparison of {metric} between {model_names[idx1]} and {model_names[idx2]}"
+                )
+
+                # Annotate some points (top 5 differences)
+                df_combined = pd.DataFrame(
+                    {
+                        "Class": df1["Class"],
+                        f"{model_names[idx1]}": df1[metric],
+                        f"{model_names[idx2]}": df2[metric],
+                    }
+                )
+                df_combined["Diff"] = abs(
+                    df_combined[f"{model_names[idx1]}"]
+                    - df_combined[f"{model_names[idx2]}"]
+                )
+
+                for _, row in df_combined.nlargest(5, "Diff").iterrows():
+                    plt.annotate(
+                        row["Class"],
+                        (row[f"{model_names[idx1]}"], row[f"{model_names[idx2]}"]),
+                        xytext=(5, 5),
+                        textcoords="offset points",
+                    )
+
+                plt.tight_layout()
+                plt.savefig(
+                    os.path.join(
+                        PLOTS_DIR,
+                        f"comparison_{metric.lower()}_{model_names[idx1].lower()}_{model_names[idx2].lower()}.png",
+                    ),
+                    dpi=300,
+                )
+                plt.close()
 
 
 def main():

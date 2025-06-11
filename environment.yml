@@ -25,3 +25,5 @@ dependencies:
       - ultralytics
       - imagehash
       - timm
+      - gradio
+      - httpx[socks]

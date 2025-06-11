@@ -66,6 +66,38 @@ def load_model(model_path, device="cpu"):
                     )
                     model.load_state_dict(checkpoint)
                     print(f"Created DenseNet121 model with {num_classes} classes")
+                elif "efficient" in model_path.lower():
+                    from torchvision.models import efficientnet_b3
+
+                    model = efficientnet_b3(pretrained=False)
+                    # EfficientNet's classifier is a Sequential - need to handle differently
+                    if isinstance(model.classifier, torch.nn.Sequential):
+                        # Get the last layer which should be Linear
+                        if isinstance(model.classifier[-1], torch.nn.Linear):
+                            in_features = model.classifier[-1].in_features
+                            # Recreate classifier with our number of classes
+                            model.classifier[-1] = torch.nn.Linear(
+                                in_features, num_classes
+                            )
+                        else:
+                            # Fallback in case structure is different
+                            for layer in model.classifier:
+                                if isinstance(layer, torch.nn.Linear):
+                                    in_features = layer.in_features
+                                    break
+                            # Create a new classifier that mimics the old one but with new output
+                            new_classifier = torch.nn.Sequential(
+                                *list(model.classifier.children())[:-1],
+                                torch.nn.Linear(in_features, num_classes),
+                            )
+                            model.classifier = new_classifier
+                    else:
+                        # Direct replacement if classifier is not Sequential
+                        model.classifier = torch.nn.Linear(
+                            model.classifier.in_features, num_classes
+                        )
+                    model.load_state_dict(checkpoint)
+                    print(f"Created EfficientNet_b3 model with {num_classes} classes")
                 else:
                     # Try to infer architecture from the keys in the state dict
                     if any("layer1.0.conv1" in k for k in checkpoint.keys()):
@@ -348,7 +380,7 @@ def save_metrics_to_csv(actual, predicted, class_names, overall_accuracy, overal
 
 if __name__ == "__main__":
     # Usage example
-    model_path = "/home/dexer/Repos/Python/Nadeko/runs/train/resnet_train_20250609_200651/best.pt"
+    model_path = "./runs/train/efficient_train_20250610_172219/best.pt"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
